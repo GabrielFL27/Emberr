@@ -422,6 +422,8 @@ fun NoteScreen(
             override fun onVoiceRecorded(id: String, filePath: String, duration: Int) = viewModel.handleVoiceRecorded(id, filePath, duration)
             override fun onRemoveVoice(id: String) = viewModel.handleRemoveVoice(id)
             override fun onDeleteImageBlock(id: String) = viewModel.deleteImageBlock(id)
+            override fun onImageLinkSubmitted(blockId: String, address: String) = viewModel.handleImageLinkSubmitted(blockId, address)
+            override val imageLinkFetches get() = viewModel.imageLinkFetches
             override fun onRequestImagePicker(blockId: String) {
                 onPickImage { path -> viewModel.handleImagePicked(blockId, path) }
             }

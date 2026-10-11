@@ -1,7 +1,6 @@
 package com.emberr.presentation.shared.editor
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -100,6 +99,9 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import kotlin.time.Duration.Companion.milliseconds
 import androidx.compose.ui.platform.LocalDensity
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.emberr.data.local.room.entity.CustomPropertyEntity
 import com.emberr.data.local.room.entity.NoteKind
 import com.emberr.data.local.room.entity.NoteMetadataEntity
@@ -119,7 +121,7 @@ import emberr.shared.generated.resources.code
 import emberr.shared.generated.resources.copy
 import emberr.shared.generated.resources.ellipsis
 import emberr.shared.generated.resources.eye3
-import emberr.shared.generated.resources.file_text
+import emberr.shared.generated.resources.document_text_12
 import emberr.shared.generated.resources.format_bold
 import emberr.shared.generated.resources.highlight
 import emberr.shared.generated.resources.image
@@ -192,9 +194,6 @@ sealed interface SlashMenuIcon {
     data class Label(val text: String) : SlashMenuIcon
 }
 
-private const val EditorRowAnimationMillis = 300
-private const val EditorRowFadeOutMillis = 200
-
 data class SlashMenuItemData(
     val label: String,
     val icon: SlashMenuIcon,
@@ -253,6 +252,10 @@ object EditorEventBus {
     val cancelMentionEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 }
 
+data class ImageLinkFetch(val address: String, val hasFailed: Boolean)
+
+private val noImageLinkFetches: StateFlow<Map<String, ImageLinkFetch>> = MutableStateFlow<Map<String, ImageLinkFetch>>(emptyMap()).asStateFlow()
+
 @Stable
 interface EditorActions {
 
@@ -289,6 +292,8 @@ interface EditorActions {
     fun onStopAudio()
     fun onDeleteImageBlock(id: String)
     fun onRequestImagePicker(blockId: String)
+    fun onImageLinkSubmitted(blockId: String, address: String) {}
+    val imageLinkFetches: StateFlow<Map<String, ImageLinkFetch>> get() = noImageLinkFetches
     fun onRequestDocumentPicker(blockId: String)
     fun onOpenFile(filePath: String, mimeType: String)
     fun onTogglePin()
@@ -873,12 +878,6 @@ fun EditorScreen(
                         else -> null
                     }
 
-                    val rowAnimation = Modifier.animateItem(
-                        fadeInSpec = tween(EditorRowAnimationMillis),
-                        placementSpec = tween(EditorRowAnimationMillis, easing = FastOutSlowInEasing),
-                        fadeOutSpec = tween(EditorRowFadeOutMillis)
-                    )
-
                     val previousBlock = blocks.getOrNull(index - 1)
                     val isFirstChildOfToggleOrCallout = (previousBlock is ToggleBlock || previousBlock is CalloutBlock) &&
                         block.indentationLevel == previousBlock.indentationLevel + 1
@@ -891,7 +890,7 @@ fun EditorScreen(
                                 text = label,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = rowAnimation
+                                modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = if (isDesktopPlatform) 36.dp else 16.dp)
                                     .padding(top = if (index == 0) 0.dp else 20.dp, bottom = 8.dp)
@@ -899,7 +898,7 @@ fun EditorScreen(
                         }
                     }
 
-                    Box(modifier = rowAnimation.fillMaxWidth().drawCalloutFrames(calloutFrames[index], MaterialTheme.colorScheme.surface)) {
+                    Box(modifier = Modifier.fillMaxWidth().drawCalloutFrames(calloutFrames[index], MaterialTheme.colorScheme.surface)) {
                         NoteBlockItem(
                             block = block,
                             displayedIndentationLevel = displayedIndentationLevelOf(block, calloutFrames[index]),
@@ -1576,7 +1575,7 @@ fun buildSlashMenuSections(
     SlashMenuSectionData("Media & Links", listOf(
         SlashMenuItemData("Voice Note", Res.drawable.microphone) { onChangeBlockType("voice") },
         SlashMenuItemData("Image", Res.drawable.image) { onInsertMediaBlock("image") },
-        SlashMenuItemData("Document / File", Res.drawable.file_text) { onInsertMediaBlock("document") },
+        SlashMenuItemData("Document / File", Res.drawable.document_text_12) { onInsertMediaBlock("document") },
         SlashMenuItemData("Web Bookmark", Res.drawable.bookmark) { onInsertMediaBlock("bookmark") },
         SlashMenuItemData("Simple Table", Res.drawable.table) { onInsertMediaBlock("table") },
         SlashMenuItemData("Database", Res.drawable.database) { onInsertMediaBlock("database") },

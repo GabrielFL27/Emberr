@@ -287,6 +287,8 @@ fun ImageGrid(
                                 onToggleSelection = { viewModel.toggleSelection(block.id) },
                                 onRequestPicker = {},
                                 onRequestCamera = {},
+                                imageLinkFetch = null,
+                                onImageLinkSubmitted = {},
                                 onDelete = { viewModel.deleteImageBlock(block.id) }
                             )
 

@@ -1,8 +1,13 @@
 package com.emberr.presentation.settings
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -44,6 +49,10 @@ import com.emberr.domain.util.system.appVersionName
 import com.emberr.domain.util.system.isDesktopPlatform
 import com.emberr.domain.util.system.restartApplication
 import com.emberr.domain.util.system.rememberAppPermissionCoordinator
+import com.emberr.presentation.settings.about.AboutScreen
+import com.emberr.presentation.settings.about.OpenSourceLicensesScreen
+import com.emberr.presentation.settings.importer.ImportScreen
+import com.emberr.presentation.settings.selfhost.SelfHostSetupScreen
 import com.emberr.presentation.shared.components.EmberrBottomSheet
 import com.emberr.presentation.shared.components.EmberrAlertDialog
 import com.emberr.presentation.shared.components.EmberrButtonPrimary
@@ -54,6 +63,8 @@ import com.emberr.presentation.shared.components.EmberrVerticalScrollbar
 import com.emberr.presentation.shared.components.EmberrBottomSheetOption
 import com.emberr.presentation.shared.components.SelectedOptionBackground
 import com.emberr.presentation.shared.components.EmberrTopHeaderBar
+import com.emberr.presentation.shared.components.TopBarIconButton
+import com.emberr.presentation.shared.components.TopHeaderBarButtonSize
 import com.emberr.presentation.shared.components.topHeaderBarPadding
 import com.emberr.presentation.sync.SyncPairingDialog
 import com.emberr.presentation.sync.SyncScannerDialog
@@ -73,6 +84,8 @@ import emberr.shared.generated.resources.badge_question_mark
 import emberr.shared.generated.resources.bell
 import emberr.shared.generated.resources.calendar_clock
 import emberr.shared.generated.resources.daily
+import emberr.shared.generated.resources.download
+import emberr.shared.generated.resources.chevron_left
 import emberr.shared.generated.resources.chevron_right
 import emberr.shared.generated.resources.file_down
 import emberr.shared.generated.resources.files
@@ -101,6 +114,7 @@ private const val PRIVACY_POLICY_URL = "https://github.com/emberr-app/Emberr/blo
 private val SettingsCardShape = RoundedCornerShape(18.dp)
 private val SettingsSidebarWidth = 244.dp
 private val SettingsPaneMaxWidth = 760.dp
+private const val SUB_PAGE_FADE_MILLIS = 150
 
 internal fun desktopSettingsSidePadding(availableWidth: Dp): Dp =
     if (isDesktopPlatform) ((availableWidth - SettingsPaneMaxWidth) / 2).coerceAtLeast(0.dp) else 0.dp
@@ -124,17 +138,18 @@ private class SettingsCategory(
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    onImportClick: () -> Unit = {},
     onExportReady: () -> Unit = {},
     onRequestBackupFolder: () -> Unit = {},
     onNavigateToSelfHostSetup: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
+    onNavigateToImportNotes: () -> Unit = {},
+    desktopSubPage: SettingsSubPage? = null,
+    onDesktopSubPageChange: (SettingsSubPage?) -> Unit = {},
+    onImportBackupClick: () -> Unit = {},
     showBackButton: Boolean = true,
     viewModel: SettingsViewModel = koinViewModel(),
     syncViewModel: SyncViewModel = koinViewModel()
 ) {
-    var showImportExportSheet by remember { mutableStateOf(false) }
-
     val isPaired by syncViewModel.isPaired.collectAsState()
     val isSelfHostConnected by syncViewModel.isSelfHostConnected.collectAsState()
     val syncStatus by syncViewModel.syncStatus.collectAsState()
@@ -144,7 +159,6 @@ fun SettingsScreen(
     var activePairingData by remember { mutableStateOf<SyncPairingData?>(null) }
     var showScannerDialog by remember { mutableStateOf(false) }
     var showUnpairConfirmation by remember { mutableStateOf(false) }
-    var showRestoreConfirmation by remember { mutableStateOf(false) }
     var syncPortInput by remember { mutableStateOf(syncViewModel.getSyncPort().toString()) }
 
     val autoBackupEnabled by viewModel.autoBackupEnabled.collectAsState()
@@ -214,13 +228,14 @@ fun SettingsScreen(
         }
 
         add(
-            SettingsCategory(title = "Data", icon = Res.drawable.files) {
+            SettingsCategory(title = DATA_CATEGORY_TITLE, icon = Res.drawable.files) {
                 DataSettingsSection(
                     autoBackupEnabled = autoBackupEnabled,
                     backupFrequency = backupFrequency,
                     backupTime = backupTime,
                     backupDay = backupDay,
-                    onImportExportClick = { showImportExportSheet = true },
+                    onExportClick = onExportReady,
+                    onImportNotesClick = onNavigateToImportNotes,
                     onAutoBackupChange = { isChecked ->
                         when {
                             !isChecked -> viewModel.setAutoBackupEnabled(false)
@@ -239,7 +254,7 @@ fun SettingsScreen(
         )
 
         add(
-            SettingsCategory(title = "Sync", icon = Res.drawable.folder_sync) {
+            SettingsCategory(title = SYNC_CATEGORY_TITLE, icon = Res.drawable.folder_sync) {
                 SyncSettingsSection(
                     isPaired = isPaired,
                     isSelfHostConnected = isSelfHostConnected,
@@ -323,7 +338,7 @@ fun SettingsScreen(
         )
 
         add(
-            SettingsCategory(title = "Help", icon = Res.drawable.badge_question_mark) {
+            SettingsCategory(title = HELP_CATEGORY_TITLE, icon = Res.drawable.badge_question_mark) {
                 Column {
                     HelpSettingsSection(onAboutClick = onNavigateToAbout)
                     AppUpdateSettingsSection()
@@ -352,6 +367,25 @@ fun SettingsScreen(
             DesktopSettingsPanes(
                 categories = categories,
                 contentTopPadding = topBarHeightDp,
+                subPage = desktopSubPage,
+                onSubPageChange = onDesktopSubPageChange,
+                subPageContent = { page ->
+                    val goBack = { onDesktopSubPageChange(page.parentPage) }
+                    when (page) {
+                        SettingsSubPage.SELF_HOST -> SelfHostSetupScreen(onNavigateBack = goBack, showTopBar = false)
+                        SettingsSubPage.IMPORT -> ImportScreen(
+                            onNavigateBack = goBack,
+                            onImportBackupClick = onImportBackupClick,
+                            showTopBar = false
+                        )
+                        SettingsSubPage.ABOUT -> AboutScreen(
+                            onNavigateBack = goBack,
+                            onOpenSourceLicensesClick = { onDesktopSubPageChange(SettingsSubPage.OPEN_SOURCE_LICENSES) },
+                            showTopBar = false
+                        )
+                        SettingsSubPage.OPEN_SOURCE_LICENSES -> OpenSourceLicensesScreen(onNavigateBack = goBack, showTopBar = false)
+                    }
+                },
                 modifier = surfaceModifier
             )
         } else {
@@ -375,50 +409,11 @@ fun SettingsScreen(
                 hazeState = hazeState,
                 contentPadding = topHeaderBarPadding(bottom = 16.dp),
                 showBackButton = showBackButton,
-                onBackClick = onNavigateBack
-            )
-        }
-
-        if (showImportExportSheet) {
-            EmberrBottomSheet(
-                expanded = true,
-                onDismiss = { showImportExportSheet = false },
-                title = "Import / Export",
-                subtitle = "Backup your data securely to a local file, or restore a previous backup."
-            ) { closeAnd ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        EmberrButtonPrimary(
-                            text = "Export",
-                            onClick = {
-                                showImportExportSheet = false
-                                onExportReady()
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        EmberrButtonSecondary(
-                            text = "Import",
-                            onClick = {
-                                showImportExportSheet = false
-                                showRestoreConfirmation = true
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    EmberrButtonPrimary(
-                        text = "Close",
-                        onClick = { closeAnd { showImportExportSheet = false } },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                onBackClick = {
+                    val openSubPage = desktopSubPage
+                    if (openSubPage != null) onDesktopSubPageChange(openSubPage.parentPage) else onNavigateBack()
                 }
-            }
+            )
         }
     }
 
@@ -774,44 +769,6 @@ fun SettingsScreen(
             }
         }
     }
-
-    if (showRestoreConfirmation) {
-        EmberrAlertDialog(
-            onDismissRequest = { showRestoreConfirmation = false },
-            title = "Replace Everything?"
-        ) {
-            Text(
-                text = "Restoring replaces everything on this device with the backup. This can't be undone. " +
-                        "Your other synced devices aren't changed. When you sync, anything newer on them " +
-                        "will come back to this device.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-            )
-            Spacer(Modifier.height(20.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                EmberrButtonSecondary(
-                    text = "Cancel",
-                    onClick = { showRestoreConfirmation = false },
-                    modifier = Modifier.weight(1f)
-                )
-                EmberrButtonPrimary(
-                    text = "Choose Backup",
-                    onClick = {
-                        showRestoreConfirmation = false
-                        onImportClick()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            EmberrButtonPrimary(
-                text = "Restore Everywhere (Coming Soon)",
-                onClick = {},
-                enabled = false,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
 }
 
 @Composable
@@ -836,42 +793,81 @@ private fun MobileSettingsList(
 private fun DesktopSettingsPanes(
     categories: List<SettingsCategory>,
     contentTopPadding: Dp,
+    subPage: SettingsSubPage?,
+    onSubPageChange: (SettingsSubPage?) -> Unit,
+    subPageContent: @Composable (SettingsSubPage) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedCategoryTitle by remember { mutableStateOf(categories.first().title) }
-    val selectedCategory = categories.firstOrNull { it.title == selectedCategoryTitle } ?: categories.first()
+    LaunchedEffect(subPage) {
+        if (subPage != null) selectedCategoryTitle = subPage.categoryTitle
+    }
+    val shownCategoryTitle = subPage?.categoryTitle ?: selectedCategoryTitle
+    val selectedCategory = categories.firstOrNull { it.title == shownCategoryTitle } ?: categories.first()
 
     Box(modifier = modifier.padding(top = contentTopPadding), contentAlignment = Alignment.TopCenter) {
         Row(modifier = Modifier.widthIn(max = SettingsSidebarWidth + SettingsPaneMaxWidth).fillMaxSize()) {
             SettingsCategorySidebar(
                 categories = categories,
                 selectedCategoryTitle = selectedCategory.title,
-                onCategorySelected = { title -> selectedCategoryTitle = title }
+                onCategorySelected = { title ->
+                    selectedCategoryTitle = title
+                    if (subPage != null) onSubPageChange(null)
+                }
             )
 
             val paneScrollState = remember(selectedCategory.title) { ScrollState(0) }
 
-            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(paneScrollState)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .widthIn(max = SettingsPaneMaxWidth)
-                            .padding(bottom = 48.dp)
-                    ) {
-                        key(selectedCategory.title) { selectedCategory.content() }
+            AnimatedContent(
+                targetState = subPage,
+                transitionSpec = {
+                    fadeIn(tween(SUB_PAGE_FADE_MILLIS)) togetherWith fadeOut(tween(SUB_PAGE_FADE_MILLIS))
+                },
+                modifier = Modifier.weight(1f).fillMaxHeight()
+            ) { shownSubPage ->
+                if (shownSubPage == null) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(paneScrollState)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .widthIn(max = SettingsPaneMaxWidth)
+                                    .padding(bottom = 48.dp)
+                            ) {
+                                key(selectedCategory.title) { selectedCategory.content() }
+                            }
+                        }
+
+                        EmberrVerticalScrollbar(
+                            scrollState = paneScrollState,
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp)
+                        )
+                    }
+                } else {
+                    Column(modifier = Modifier.widthIn(max = SettingsPaneMaxWidth).fillMaxHeight()) {
+                        SettingsSubPageBackButton(onClick = { onSubPageChange(shownSubPage.parentPage) })
+                        Box(modifier = Modifier.weight(1f)) { subPageContent(shownSubPage) }
                     }
                 }
-
-                EmberrVerticalScrollbar(
-                    scrollState = paneScrollState,
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp)
-                )
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsSubPageBackButton(onClick: () -> Unit) {
+    Box(modifier = Modifier.padding(start = 16.dp, top = 20.dp)) {
+        TopBarIconButton(
+            icon = painterResource(Res.drawable.chevron_left),
+            contentDescription = "Back",
+            bgColor = Color.Transparent,
+            tint = MaterialTheme.colorScheme.primary,
+            size = TopHeaderBarButtonSize,
+            onClick = onClick
+        )
     }
 }
 
@@ -950,7 +946,8 @@ private fun DataSettingsSection(
     backupFrequency: String,
     backupTime: String,
     backupDay: String,
-    onImportExportClick: () -> Unit,
+    onExportClick: () -> Unit,
+    onImportNotesClick: () -> Unit,
     onAutoBackupChange: (Boolean) -> Unit,
     onBackupFrequencySelected: (String) -> Unit,
     onPickBackupDay: () -> Unit,
@@ -959,9 +956,15 @@ private fun DataSettingsSection(
 ) {
     SettingsGroup(title = "Data & Storage") {
         SettingsActionRow(
+            icon = painterResource(Res.drawable.download),
+            title = "Import",
+            onClick = onImportNotesClick
+        )
+        SettingsDivider()
+        SettingsActionRow(
             icon = painterResource(Res.drawable.file_down),
-            title = "Import / Export",
-            onClick = onImportExportClick
+            title = "Export Backup",
+            onClick = onExportClick
         )
 
         if (!isDesktopPlatform) {
@@ -983,7 +986,7 @@ private fun DataSettingsSection(
                         options = BackupFrequencies,
                         selectedOption = backupFrequency,
                         onOptionSelected = onBackupFrequencySelected,
-                        modifier = Modifier.padding(start = 50.dp, end = 14.dp, bottom = 14.dp)
+                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
                     )
 
                     if (backupFrequency == "Weekly") {
@@ -1051,9 +1054,11 @@ private fun SyncSettingsSection(
         when {
             isPaired -> {
                 if (isDesktopPlatform) {
-                    SettingsFootnote(
+                    Text(
                         text = "Paired. This desktop syncs automatically whenever your phone connects over LAN.",
-                        startPadding = 16.dp
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
                     )
                 } else {
                     SettingsActionRow(
@@ -1474,12 +1479,12 @@ internal fun SettingsValuePill(label: String, isDestructive: Boolean = false) {
 }
 
 @Composable
-private fun SettingsFootnote(text: String, startPadding: Dp = 50.dp) {
+internal fun SettingsFootnote(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-        modifier = Modifier.padding(start = startPadding, end = 16.dp, top = 2.dp, bottom = 14.dp)
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 14.dp)
     )
 }
 

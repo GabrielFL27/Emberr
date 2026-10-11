@@ -320,6 +320,7 @@ val sharedModule = module {
         com.emberr.presentation.home.note.NoteEditorViewModel(
             repository = get(),
             mediaStorageHelper = get(),
+            webImageFetcher = get(),
             reminderScheduler = get(),
             audioRecorder = get(),
             appScope = get(named("AppScope"))
@@ -329,6 +330,7 @@ val sharedModule = module {
         DailyEditorViewModel(
             repository = get(),
             mediaStorageHelper = get(),
+            webImageFetcher = get(),
             reminderScheduler = get(),
             audioRecorder = get(),
             appScope = get(named("AppScope")),
@@ -360,6 +362,28 @@ val sharedModule = module {
         com.emberr.presentation.space.SpaceViewModel(
             spaceRepository = get(),
             activeSpaceStore = get()
+        )
+    }
+    single<com.emberr.domain.util.media.WebImageFetcher> {
+        com.emberr.domain.util.media.KtorWebImageFetcher(mediaStorageHelper = get())
+    }
+    single {
+        com.emberr.domain.importer.MarkdownNotesImporter(
+            repository = get(),
+            canvasRepository = get(),
+            mediaStorageHelper = get(),
+            webImageFetcher = get(),
+            reminderRescheduler = get(),
+            appScope = get(named("AppScope"))
+        )
+    }
+    viewModel {
+        com.emberr.presentation.settings.importer.ImportViewModel(
+            spaceRepository = get(),
+            activeSpaceStore = get(),
+            importFileReader = get(),
+            importFolderReader = getOrNull(),
+            markdownNotesImporter = get()
         )
     }
     viewModel {
