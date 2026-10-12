@@ -225,6 +225,14 @@ object GlobalEditorState {
 
     var pressStartedOnCanvasBlock: Boolean = false
 
+    var pressStartedOnNewDatabaseRow: Boolean = false
+
+    var isPointerOverDatabaseViewPill: Boolean = false
+
+    var pressStartedOnDatabaseViewPill: Boolean = false
+
+    var tapsOutsideNewDatabaseRows by mutableIntStateOf(0)
+
     var hasTextSelection by mutableStateOf(false)
         private set
 
@@ -298,7 +306,6 @@ interface EditorActions {
     fun onOpenFile(filePath: String, mimeType: String)
     fun onTogglePin()
     fun onUpdateTable(id: String, rows: List<List<String>>)
-    fun onUpdateTableColumnWidth(id: String, columnIndex: Int, width: Int)
     fun onUpdateTableStyle(
         id: String,
         cellStyles: Map<String, com.emberr.domain.model.TableCellStyle>,
@@ -739,6 +746,22 @@ fun EditorScreen(
             .fillMaxSize()
             .imePadding()
             .onGloballyPositioned { editorTopLeftInWindow = it.positionInWindow() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    GlobalEditorState.pressStartedOnNewDatabaseRow = false
+                    GlobalEditorState.pressStartedOnDatabaseViewPill = false
+                    while (true) {
+                        val change = awaitPointerEvent(PointerEventPass.Initial).changes
+                            .firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                        if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) return@awaitEachGesture
+                        if (!change.pressed) {
+                            if (!GlobalEditorState.pressStartedOnNewDatabaseRow) GlobalEditorState.tapsOutsideNewDatabaseRows++
+                            return@awaitEachGesture
+                        }
+                    }
+                }
+            }
             .then(
                 if (isDesktopPlatform) {
                     Modifier

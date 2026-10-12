@@ -102,12 +102,14 @@ internal fun DatabaseGallery(
     var galleryOriginInRoot by remember { mutableStateOf(Offset.Zero) }
     val autoScroll = rememberVerticalDragAutoScroll(isDragging = dragState.isDragging, pointerInRoot = { dragState.pointerInRoot })
     val shownRowIds = rows.map { it.noteId }
+    val latestShownRowIds by rememberUpdatedState(shownRowIds)
+    val latestOnMoveRow by rememberUpdatedState(onMoveRow)
 
     fun dropDraggedCard() {
         val draggedRowId = dragState.draggedRowNoteId
         val spot = dragState.dropSpot()
-        if (draggedRowId != null && spot != null && dropMovesRow(shownRowIds, draggedRowId, spot.nextToRowId, spot.isAfter)) {
-            onMoveRow(draggedRowId, spot.nextToRowId, spot.isAfter)
+        if (draggedRowId != null && spot != null && dropMovesRow(latestShownRowIds, draggedRowId, spot.nextToRowId, spot.isAfter)) {
+            latestOnMoveRow(draggedRowId, spot.nextToRowId, spot.isAfter)
         }
         dragState.reset()
     }
@@ -299,9 +301,8 @@ internal fun DatabaseRowCard(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val icon = row.icon
-                if (view.showsIcon && icon != null) {
-                    Text(text = icon, style = MaterialTheme.typography.bodyLarge)
+                if (view.showsIcon) {
+                    DatabaseRowIcon(icon = row.icon, emojiStyle = MaterialTheme.typography.bodyLarge)
                     Spacer(modifier = Modifier.width(6.dp))
                 }
                 Text(

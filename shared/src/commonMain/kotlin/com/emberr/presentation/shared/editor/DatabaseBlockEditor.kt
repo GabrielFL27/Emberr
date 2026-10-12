@@ -24,6 +24,7 @@ import com.emberr.domain.database.withStyle
 import com.emberr.domain.database.withViewAdded
 import com.emberr.domain.database.withViewChanged
 import com.emberr.domain.database.withViewDeleted
+import com.emberr.domain.database.withViewMovedBefore
 import com.emberr.domain.database.withViewGroupedBy
 import com.emberr.domain.database.withRowStylesCopied
 import com.emberr.domain.database.withDatabasePropertyCreated
@@ -198,10 +199,6 @@ class DatabaseBlockEditor(
         host.changeDatabaseBlock(blockId) { it.copy(title = title) }
     }
 
-    fun setColumnWidth(blockId: String, columnKey: String, width: Int) {
-        host.changeDatabaseBlock(blockId) { it.copy(columnWidths = it.columnWidths + (columnKey to width)) }
-    }
-
     @OptIn(ExperimentalUuidApi::class)
     fun addFilter(blockId: String, viewId: String, target: DatabaseColumnTarget) {
         val valueType = host.findDatabaseBlock(blockId)?.valueTypeOf(target) ?: return
@@ -236,6 +233,10 @@ class DatabaseBlockEditor(
 
     fun renameView(blockId: String, viewId: String, name: String) {
         host.changeDatabaseBlock(blockId) { databaseBlock -> databaseBlock.withViewChanged(viewId) { it.copy(name = name) } }
+    }
+
+    fun moveViewBefore(blockId: String, viewId: String, beforeViewId: String?) {
+        host.changeDatabaseBlock(blockId) { it.withViewMovedBefore(viewId, beforeViewId) }
     }
 
     fun deleteView(blockId: String, viewId: String) {
@@ -586,13 +587,22 @@ class DatabaseBlockEditor(
         name: String,
         valueType: PropertyValueType,
         viewIdToGroupByIt: String? = null,
-        beforeColumn: DatabaseColumnTarget? = null
+        beforeColumn: DatabaseColumnTarget? = null,
+        addsToProperties: Boolean = false
     ) {
         val databaseBlock = host.findDatabaseBlock(blockId) ?: return
         val cleanedName = name.trim()
         if (cleanedName.isEmpty() || databaseBlock.isPropertyNameTaken(cleanedName, ignoringPropertyId = null)) return
-        val property = DatabaseCustomProperty(id = Uuid.random().toString(), name = cleanedName, valueType = valueType)
-        addPropertyColumn(blockId, property, viewIdToGroupByIt, beforeColumn)
+        if (!addsToProperties || valueType.isOnlyForDatabases) {
+            val property = DatabaseCustomProperty(id = Uuid.random().toString(), name = cleanedName, valueType = valueType)
+            addPropertyColumn(blockId, property, viewIdToGroupByIt, beforeColumn)
+            return
+        }
+        writeInOrder {
+            val globalProperty = repository.createCustomProperty(cleanedName, valueType)
+            val property = DatabaseCustomProperty(id = globalProperty.propertyId, name = globalProperty.name, valueType = globalProperty.valueType)
+            addPropertyColumn(blockId, property, viewIdToGroupByIt, beforeColumn)
+        }
     }
 
     fun addSharedProperty(
